@@ -9,6 +9,11 @@ Try executing this chunk by clicking the *Run* button within the chunk or by pla
 
 ```{r}
 plot(cars)
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
 ```
 
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
@@ -34,8 +39,39 @@ head(df)
 glimpse(df)
 ```
 ```{r}
+
+```
+
+
+
+```{r}
 summary(df)
 ```
+
+```{r}
+# Count missing values for each column
+missing_values_summary <- df %>%
+  summarise(across(everything(), ~ sum(is.na(.))))
+
+# Display missing values summary
+print(missing_values_summary)
+```
+```{r}
+# Drop the specified columns
+df <- df %>%
+  select(
+    -`NAICS Title FR / Titre Code SCIAN FR`,
+    -`Substance Name (French) / Nom de substance (Français)`,
+    -`Group (French) / Groupe (Français)`,
+    -`Category (French) / Catégorie (Français)`
+  )
+
+# Inspect the data to confirm the columns are removed
+glimpse(df)
+```
+
+
+
 ```{r}
 library(tidyverse)
 
@@ -76,6 +112,80 @@ df %>%
   )
 ```
 ```{r}
+unique(df$Units)
+```
+```{r}
+# Step 1: Create a new column with standardized values (Quantity_in_tonnes)
+df <- df %>%
+  mutate(
+    Quantity_in_tonnes = case_when(
+      Units == "tonnes" ~ Quantity,                    # Already in tonnes
+      Units == "kg" ~ Quantity / 1000,                # Convert kilograms to tonnes
+      Units == "grams" ~ Quantity / 1e6,              # Convert grams to tonnes
+      Units == "g TEQ" ~ Quantity / 1e6,              # Convert g TEQ to tonnes (toxicity-based measure)
+      TRUE ~ NA_real_                                 # Handle unexpected units
+    ),
+    Units_in_tonnes = "tonnes"  # New column to reflect updated unit
+  )
+
+# Inspect the dataset with the new columns
+head(df)
+```
+```{r}
+# Step 2: Replace old columns with the adjusted ones
+df <- df %>%
+  mutate(
+    Quantity = Quantity_in_tonnes,  # Replace old Quantity with standardized column
+    Units = Units_in_tonnes         # Replace Units with standardized value
+  ) %>%
+  select(-Quantity_in_tonnes, -Units_in_tonnes)  # Drop temporary columns
+```
+
+```{r}
+# Inspect the final dataset
+head(df)
+```
+```{r}
+unique(df$Units)
+```
+
+
+```{r}
+# Load required library
+library(ggplot2)
+
+# Boxplot with log transformation to handle small and large values
+ggplot(df, aes(x = "", y = Quantity)) +
+  geom_boxplot(fill = "steelblue") +
+  scale_y_continuous(trans = "log10", labels = scales::scientific) +  # Apply log scale with scientific notation
+  labs(
+    title = "Boxplot for Outlier Detection in Quantity",
+    x = "",  # No label for x-axis since it's a single variable
+    y = "Log-Transformed Quantity"
+  ) +
+  theme_minimal()
+```
+```{r}
+# Identify high outliers (e.g., above 95th percentile)
+high_outliers <- df %>%
+  filter(Quantity > quantile(Quantity, 0.95, na.rm = TRUE))
+
+# View the top outliers
+head(high_outliers)
+```
+```{r}
+# Identify low outliers (e.g., below 5th percentile)
+low_outliers <- df %>%
+  filter(Quantity < quantile(Quantity, 0.05, na.rm = TRUE))
+
+# View the bottom outliers
+head(low_outliers)
+```
+
+
+
+
+```{r}
 # Original scale
 ggplot(df, aes(x = Quantity)) +
   geom_histogram(bins = 30, fill = "blue", color = "black") +
@@ -108,7 +218,7 @@ unique(df$Substance_Name_EN)
 library(dplyr)
 
 df <- df %>%
-  mutate(Sub_Substance_Name_EN = case_when(
+  mutate(Substance_Category = case_when(
     # Handle missing values
     is.na(Substance_Name_EN) ~ "Unknown",
 
@@ -235,7 +345,7 @@ head(df)
 ```{r}
 # Count the number of unique subcategories and their frequencies
 substance_summary <- df %>%
-  count(Sub_Substance_Name_EN, sort = TRUE)
+  count(Substance_Category, sort = TRUE)
 
 # View the result
 print(substance_summary)
@@ -248,11 +358,11 @@ library(dplyr)
 
 # Summarize data: Count for each combination of province and subcategory
 province_substance_summary <- df %>%
-  group_by(Province, Sub_Substance_Name_EN) %>%
+  group_by(Province, Substance_Category) %>%
   summarise(count = n(), .groups = "drop")
 
 # Create the stacked bar chart
-ggplot(province_substance_summary, aes(x = Province, y = count, fill = Sub_Substance_Name_EN)) +
+ggplot(province_substance_summary, aes(x = Province, y = count, fill = Substance_Category)) +
   geom_bar(stat = "identity", position = "stack") +
   labs(
     title = "Distribution of Substances by Province and Subcategory",
@@ -265,6 +375,10 @@ ggplot(province_substance_summary, aes(x = Province, y = count, fill = Sub_Subst
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 ```
+
+
+
+
 ```{r}
 # Load required libraries
 library(dplyr)
