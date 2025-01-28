@@ -1,0 +1,314 @@
+---
+title: "Milestone 2"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r}
+getwd()
+```
+```{r}
+library(readr)
+
+file_path <- "NPRI-INRP_ReleasesRejets_1993-present.csv"
+
+# Try with ISO-8859-1 encoding
+df <- read_csv(file_path, locale = locale(encoding = "ISO-8859-1"))
+
+# View the first few rows
+head(df)
+```
+```{r}
+glimpse(df)
+```
+```{r}
+summary(df)
+```
+```{r}
+library(tidyverse)
+
+# Rename columns for simplicity (keeping English versions)
+df <- df %>%
+  rename(
+    Reporting_Year = `Reporting_Year / Année`,
+    NPRI_ID = `NPRI_ID / No_INRP`,
+    Company_Name = `Company_Name / Dénomination_sociale_de_l'entreprise`,
+    Facility_Name = `Facility_Name / Installation`,
+    NAICS = `NAICS / Code_SCIAN`,
+    NAICS_Title_EN = `NAICS Title EN / Titre Code SCIAN EN`,
+    Province = PROVINCE,
+    CAS_Number = `CAS_Number / No_CAS`,
+    Substance_Name_EN = `Substance Name (English) / Nom de substance (Anglais)`,
+    Group_EN = `Group (English) / Groupe (Anglais)`,
+    Category_EN = `Category (English) / Catégorie (Anglais)`,
+    Quantity = `Quantity / Quantité`,
+    Units = `Units / Unités`,
+    Estimation_Method = `Estimation_Method / Méthode_destimation`
+  )
+
+# Inspect the data structure again
+glimpse(df)
+```
+```{r}
+head(df)
+```
+```{r}
+# Compute summary statistics for Quantity
+df %>%
+  summarise(
+    mean_quantity = mean(Quantity, na.rm = TRUE),
+    median_quantity = median(Quantity, na.rm = TRUE),
+    sd_quantity = sd(Quantity, na.rm = TRUE),
+    min_quantity = min(Quantity, na.rm = TRUE),
+    max_quantity = max(Quantity, na.rm = TRUE)
+  )
+```
+```{r}
+# Original scale
+ggplot(df, aes(x = Quantity)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  labs(title = "Distribution of Emission Quantities", x = "Quantity", y = "Frequency") +
+  theme_minimal()
+
+# Log scale
+ggplot(df, aes(x = log10(Quantity + 1))) +
+  geom_histogram(bins = 30, fill = "green", color = "black") +
+  labs(title = "Log-Transformed Distribution of Emission Quantities", x = "Log10(Quantity + 1)", y = "Frequency") +
+  theme_minimal()
+```
+```{r}
+# First, calculate counts of Province and save as a new data frame
+province_counts <- df %>%
+  count(Province, sort = TRUE)
+
+# Bar plot of Province counts
+ggplot(province_counts, aes(x = reorder(Province, -n), y = n)) +
+  geom_bar(stat = "identity", fill = "orange", color = "black") +
+  labs(title = "Frequency of Emissions by Province", x = "Province", y = "Count") +
+  coord_flip()
+```
+```{r}
+unique(df$Substance_Name_EN)
+```
+```{r}
+#based on the different substances identified, we have decided to create nine distinct groups to organize them, as outlined below:
+
+library(dplyr)
+
+df <- df %>%
+  mutate(Sub_Substance_Name_EN = case_when(
+    # Handle missing values
+    is.na(Substance_Name_EN) ~ "Unknown",
+
+    # 1. Particulate Matter (PM)
+    Substance_Name_EN %in% c(
+      "PM10 - Particulate Matter <= 10 Micrometers",
+      "PM2.5 - Particulate Matter <= 2.5 Micrometers",
+      "Total particulate matter",
+      "Asbestos (friable form only)",
+      "Asbestos"
+    ) ~ "Particulate Matter (PM)",
+
+    # 2. Metals (and Their Compounds)
+    Substance_Name_EN %in% c(
+      "Zinc (and its compounds)", "Chromium (and its compounds)", "Manganese (and its compounds)",
+      "Nickel (and its compounds)", "Cadmium (and its compounds)", "Cobalt (and its compounds)",
+      "Lead (and its compounds)", "Mercury (and its compounds)", "Copper (and its compounds)",
+      "Arsenic (and its compounds)", "Selenium (and its compounds)", "Vanadium (and its compounds)",
+      "Hexavalent chromium (and its compounds)", "Aluminum (fume or dust only)",
+      "Thallium (and its compounds)", "Antimony (and its compounds)", "Silver (and its compounds)",
+      "Molybdenum trioxide", "Aluminum oxide (fibrous forms only)", "Tetraethyl lead",
+      "Lithium carbonate", "Vanadium (except when in an alloy) and its compounds", "Iron pentacarbonyl",
+      "Thorium dioxide", "Vanadium (fume or dust)", "Zinc (fume or dust)"
+    ) ~ "Metals (and Their Compounds)",
+
+    # 3. Criteria Air Pollutants (CACs)
+    Substance_Name_EN %in% c(
+      "Volatile Organic Compounds (VOCs)", "Volatile Organic Compounds (Total)",
+      "Nitrogen oxides (expressed as nitrogen dioxide)", "Carbon monoxide", "Sulphur dioxide",
+      "Hydrogen sulphide", "Ammonia (total)", "Total reduced sulphur (expressed as hydrogen sulphide)"
+    ) ~ "Criteria Air Pollutants (CACs)",
+
+    # 4. Non-Halogenated Organics (General) (Complete list of 124 elements)
+    Substance_Name_EN %in% c(
+      "n-Butyl alcohol", "i-Butyl alcohol", "Methyl ethyl ketone", "N-Methyl-2-pyrrolidone",
+      "1,2,4-Trimethylbenzene", "Ethylene glycol", "Formic acid", "Styrene", "Methyl isobutyl ketone",
+      "Phenol (and its salts)", "Catechol", "Formaldehyde", "Methanol", "Isopropyl alcohol", "Benzene",
+      "Acetaldehyde", "Ethylbenzene", "Toluene", "2-Butoxyethanol", "Xylene (all isomers)", "Cumene",
+      "Bis(2-ethylhexyl) adipate", "Nonylphenol and its ethoxylates", "n-Hexane", "Cyclohexane",
+      "Acetonitrile", "Vinyl acetate", "Propylene", "Ethylene", "Butyl acrylate", "N-Methylolacrylamide",
+      "1,3-Butadiene", "Dicyclopentadiene", "Nitroglycerin", "Acrylonitrile", "Acrylic acid (and its salts)",
+      "Methyl methacrylate", "Methyl acrylate", "Dibutyl phthalate", "Bisphenol A", "Phthalic anhydride",
+      "n,n-Dimethylformamide", "Cresol (all isomers, and their salts)", "Quinoline", "Maleic anhydride",
+      "Acrolein", "Butyraldehyde", "Biphenyl", "1,4-Benzenediamine, N,N’-mixed phenyl and tolyl derivatives",
+      "Isoprene", "Diethanolamine (and its salts)", "Acetophenone", "tert-Butyl alcohol", "Ethyl acrylate",
+      "Acrylamide", "Octylphenol and its ethoxylates", "Pyridine (and its salts)", "Butyl benzyl phthalate",
+      "Diphenylamine", "Aniline (and its salts)", "2-Methoxyethanol", "2-Ethoxyethanol", "Triethylamine",
+      "Methyl tert-butyl ether", "Ethylene oxide", "Naphthenic acid fraction compounds (and their salts)",
+      "Bis(2-ethylhexyl) phthalate", "p,p’-Methylenedianiline", "Dimethylamine", "N,N-Dimethylaniline (and its salts)",
+      "p-Phenylenediamine (and its salts)", "Propylene oxide", "Benzoyl peroxide", "sec-Butyl alcohol",
+      "2-(2-Methoxyethoxy)ethanol", "Propionaldehyde", "2-Propanone, reaction products with diphenylamine",
+      "1,4-Dioxane", "2,6-Di-t-butyl-4-methylphenol", "Dimethyl phthalate", "Allyl alcohol",
+      "Nitrilotriacetic acid (and its salts)", "Peracetic acid (and its salts)", "Hydroquinone (and its salts)",
+      "Cumene hydroperoxide", "Cyclohexanol", "2-Mercaptobenzothiazole", "Di-n-octyl phthalate",
+      "Dimethylphenol (mixed isomers)", "C.I. Basic Red 1", "Tetracycline hydrochloride", "Diethyl phthalate",
+      "Isobutyraldehyde", "C.I. Food Red 15", "2-Ethoxyethyl acetate", "Ethylene thiourea",
+      "C.I. Basic Green 4", "2,4-Dinitrotoluene", "p-Quinone", "Nonylphenol polyethylene glycol ether",
+      "Nonylphenol", "Nonylphenol, industrial", "n-Nonylphenol (mixed isomers)", "4-tert-Octylphenol",
+      "Nonylphenoxy ethanol", "Thiourea", "o-Phenylphenol (and salts)", "p-Nonylphenol polyethylene glycol ether",
+      "p-Nitrophenol (and its salts)", "o-Cresol (and its salts)", "Cresol (mixed isomers, and their salts)",
+      "Dimethyl sulphate", "p-Cresol (and its salts)", "m-Cresol (and its salts)", "1,2-Butylene oxide",
+      "Xylene (mixed isomers)", "Nonylphenol nona(oxyethylene) ethanol", "Acetone", "p-Xylene", "o-Xylene",
+      "m-Xylene", "Styrene oxide", "C.I. Acid Green 3", "2-Nitropropane"
+    ) ~ "Non-Halogenated Organics (General)",
+
+     # 5. Halogenated Organics (43 elements)
+    Substance_Name_EN %in% c(
+      "Hexachlorobenzene", "Dioxins and furans - total", "Dichloromethane", "1,2-Dichloroethane",
+      "p-Dichlorobenzene", "o-Dichlorobenzene", "Chlorobenzene", "Chloroform", "Tetrachloroethylene",
+      "HCFC-22", "Trichloroethylene", "Chlorinated alkanes, medium-chain, CnHxCl(2n+2–x), 14 ≤ n ≤ 17",
+      "Bromomethane", "p,p’-Methylenebis(2-chloroaniline)", "1,2,4-Trichlorobenzene", "Chloromethane",
+      "Chloroethane", "Epichlorohydrin", "Decabromodiphenyl oxide", "HCFC-123 (all isomers)", 
+      "HCFC-124 (all isomers)", "CFC-11", "1,2-Dichloropropane", "1,1,2-Trichloroethane", 
+      "HCFC-142b", "Benzyl chloride", "Chloroacetic acid (and its salts)", "Halon 1301",
+      "2,4-Dichlorophenol (and its salts)", "3,3’-Dichlorobenzidine dihydrochloride", "Phosgene",
+      "Benzoyl chloride", "HCFC-141b", "CFC-114", "1,1,1,2-Tetrachloroethane", "Alkanes, C10-13, chloro",
+      "Hexachloroethane", "Pentachloroethane", "HCFC-122 (all isomers)", "Vinylidene chloride", 
+      "Halon 1211", "Ethyl chloroformate", "Vinyl chloride"
+    ) ~ "Halogenated Organics",
+
+    # 6. Polycyclic Aromatic Hydrocarbons (PAHs) (31 elements)
+    Substance_Name_EN %in% c(
+      "Pyrene", "Fluoranthene", "Acenaphthylene", "Chrysene", "Phenanthrene", "Naphthalene",
+      "Benzo[a]pyrene", "PAHs, total unspeciated", "Anthracene", "Fluorene", "Acenaphthene",
+      "Dibenzo[a,i]pyrene", "Dibenzo[a,e]pyrene", "Benzo[ghi]perylene", "Benzo[e]pyrene",
+      "Indeno[1,2,3-cd]pyrene", "Benzo[k]fluoranthene", "Dibenz[a,j]acridine", "Dibenz[a,h]acridine",
+      "Dibenz[a,h]anthracene", "Benz[a]anthracene", "Benzo[j]fluoranthene", "Benzo[b]fluoranthene",
+      "Perylene", "1-Nitropyrene", "Dibenzo[a,h]pyrene", "Dibenzo[a,l]pyrene", "3-Methylcholanthrene",
+      "7,12-Dimethylbenz[a]anthracene", "7H-Dibenzo[c,g]carbazole", "5-Methylchrysene"
+    ) ~ "Polycyclic Aromatic Hydrocarbons (PAHs)",
+
+    # 7. Inorganic Acids/Bases (5 elements)
+    Substance_Name_EN %in% c(
+      "Hydrochloric acid", "Sulphuric acid", "Nitric acid", "Hydrogen fluoride", "Phosphoric acid"
+    ) ~ "Inorganic Acids/Bases",
+
+    # 8. Isocyanates (8 elements)
+    Substance_Name_EN %in% c(
+      "Toluenediisocyanate (mixed isomers)", "Methylenebis(phenylisocyanate)", 
+      "Polymeric diphenylmethane diisocyanate", "Toluene-2,4-diisocyanate", 
+      "Toluene-2,6-diisocyanate", "Isophorone diisocyanate", 
+      "1,1-Methylenebis(4-isocyanatocyclohexane)", "2,2,4-Trimethylhexamethylene diisocyanate"
+    ) ~ "Isocyanates",
+
+    # 9. Other Inorganic Substances (18 elements)
+    Substance_Name_EN %in% c(
+      "Chlorine dioxide", "Chlorine", "Nitrate ion in solution at pH >= 6.0", 
+      "Phosphorus (total)", "Sodium nitrite", "Cyanides (ionic)", "Carbonyl sulphide", 
+      "Carbon disulphide", "Hydrogen cyanide", "Bromine", "Sodium fluoride", 
+      "Hydrazine (and its salts)", "Phosphorus (yellow or white only)", "Boron trifluoride", 
+      "Potassium bromate", "Sulphur hexafluoride", "Ammonium sulfate (solution)", 
+      "Ammonium nitrate (solution)"
+    ) ~ "Other Inorganic Substances",
+
+    # Default for substances not mapped
+    TRUE ~ "Other"
+  ))
+
+```
+
+```{r}
+head(df)
+```
+```{r}
+# Count the number of unique subcategories and their frequencies
+substance_summary <- df %>%
+  count(Sub_Substance_Name_EN, sort = TRUE)
+
+# View the result
+print(substance_summary)
+
+
+```
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Summarize data: Count for each combination of province and subcategory
+province_substance_summary <- df %>%
+  group_by(Province, Sub_Substance_Name_EN) %>%
+  summarise(count = n(), .groups = "drop")
+
+# Create the stacked bar chart
+ggplot(province_substance_summary, aes(x = Province, y = count, fill = Sub_Substance_Name_EN)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(
+    title = "Distribution of Substances by Province and Subcategory",
+    x = "Province",
+    y = "Count of Substances",
+    fill = "Substance Category"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+```{r}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+# Load Canada's geographical data (provinces)
+canada_map <- ne_states(country = "Canada", returnclass = "sf")
+
+# Summarize total quantity for each province
+province_quantity <- df %>%
+  group_by(Province) %>%
+  summarise(total_quantity = sum(Quantity, na.rm = TRUE), .groups = "drop")
+
+# Merge the summarized data with the map data
+canada_map <- canada_map %>%
+  left_join(province_quantity, by = c("name" = "Province"))
+
+# Plot the heatmap
+ggplot(data = canada_map) +
+  geom_sf(aes(fill = total_quantity), color = "black") +
+  scale_fill_gradient(name = "Total Quantity", low = "yellow", high = "red", na.value = "gray") +
+  labs(
+    title = "Heatmap of Emissions in Canada",
+    subtitle = "Total Quantity Emitted by Province",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+```
+```{r}
+install.packages("sf")
+```
+```{r}
+install.packages(c("ggplot2", "dplyr", "rnaturalearth", "rnaturalearthdata"))
+```
+```{r}
+install_github("ropensci/rnaturalearthhires")
+```
+
